@@ -1,0 +1,111 @@
+heat_template_version: 2021-04-16
+
+description: A stack to deploy a server for the Version Control with GIT QCIF Course
+
+parameters:
+  image_name:
+    type: string
+    label: Image Name
+    description: Image Name to apply to the instance
+    default: NeCTAR Ubuntu 22.04 LTS (Jammy) amd64
+  flavour:
+    type: string
+    label: Instance size
+    description: Instance flavor, eg t3.xsmall
+    default: t3.xsmall
+  ip_prefix:
+    type: string
+    label: Remote IP Prefix for SSH access
+    description: Limit access to the instance via SSH, eg 1.2.3.4/16
+    default: 0.0.0.0/0
+  external_network:
+    type: string
+    label: External Network
+    description: External Network for Router
+    default: QRIScloud
+  instance_name:
+    type: string
+    label: Name of the instance
+    default: planets
+  dns_zone:
+    type: string
+    label: DNS Zone Name
+    default: qcif-training.cloud.edu.au.
+
+resources:
+  instance_key:
+    type: OS::Nova::KeyPair
+    properties:
+      save_private_key: true
+      name:
+        str_replace:
+          template: $PROJECT_ID-$STACK_NAME-server_key
+          params:
+            $PROJECT_ID: { get_param: OS::project_id }
+            $STACK_NAME: { get_param: OS::stack_name }
+  server:
+    type: OS::Nova::Server
+    properties:
+      key_name: { get_resource: instance_key }
+      image: { get_param: image_name }
+      flavor: { get_param: flavour }
+      flavor_update_policy: REPLACE
+      networks:
+        - allocate_network: auto
+      security_groups:
+        - { get_resource: securitygroup }
+      user_data_format: RAW
+      user_data: { get_resource: cloud-init-config }
+  cloud-init-config:
+    type: OS::Heat::CloudConfig
+    properties:
+      cloud_config:
+        timezone: 'Australia/Brisbane'
+        package_reboot_if_required: true
+        package_update: true
+        hostname: { get_param: instance_name }
+        users:
+          - default
+          - name: wolfman
+            ssh-authorized-keys: { get_attr: [ instance_key, public_key ] }
+            shell: '/bin/bash'
+          - name: dracula
+            ssh_authorized_keys: { get_attr: [ instance_key, public_key ] }
+            shell: '/bin/bash'
+  securitygroup:
+    type: OS::Neutron::SecurityGroup
+    properties:
+      description: Provide Access to serverapp
+      name: server-access
+  secgroup_ssh:
+    type: OS::Neutron::SecurityGroupRule
+    properties:
+      security_group: { get_resource: securitygroup }
+      description: SSH Access to Instance
+      protocol: tcp
+      remote_ip_prefix: { get_param: ip_prefix }
+      port_range_min: 22
+      port_range_max: 22
+  DNS_record:
+    type: OS::Designate::RecordSet
+    properties:
+      description: DNS Record for VCWithGIT Server
+      name: { get_param: instance_name }
+      records: [ { get_attr: [ server, networks, qld, 0 ]} ]
+      ttl: 900
+      type: A
+      zone: { get_param: dns_zone }
+
+outputs:
+  private_key:
+    description: Instance Private Key
+    value: { get_attr: [ instance_key, private_key ]}
+  # dns_record:
+  #   description: DNS Record
+  #   value: { get_attr: [ DNS_Record, show ]}
+  server_network:
+    description: Server Network
+    value: { get_attr: [ server, networks ] }
+  server_ip:
+    description: Server IP Address
+    value: { get_attr: [ server, networks, qld, 0 ]}
