@@ -1,0 +1,9 @@
+Host dracula
+  HostName planets.qcif-training.edu.au
+  User dracula
+  IdentityFile ~/.ssh/private_key
+
+Host wolfman
+  HostName planets.qcif-training.edu.au
+  User wolfman
+  IdentityFile ~/.ssh/private_key
